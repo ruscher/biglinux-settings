@@ -135,12 +135,26 @@ close_steam() { pkill -9 steam; pkill -9 steamwebhelper; echo "done"; }
 check_steam() { pgrep -x steam >/dev/null && echo "running" || echo "stopped"; }
 
 is_installed() {
+    steam_path=""
     for p in "$HOME/.steam/steam" "$HOME/.local/share/Steam" "$HOME/.steam/debian-installation"; do
         if [ -f "$p/config/config.vdf" ]; then
-            echo "true"
-            exit 0
+            steam_path="$p"
+            break
         fi
     done
+
+    if [ -z "$steam_path" ]; then
+        echo "false"
+        exit 0
+    fi
+
+    if [ -d "$steam_path/userdata" ]; then
+       # Check if there is at least one localconfig.vdf
+       if find "$steam_path/userdata" -maxdepth 3 -name "localconfig.vdf" -print -quit 2>/dev/null | grep -q .; then
+           echo "true"
+           exit 0
+       fi
+    fi
     echo "false"
 }
 
