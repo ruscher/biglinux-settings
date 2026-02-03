@@ -837,7 +837,7 @@ class PerformanceGamesPage(BaseSettingsPage):
         steam_row.add_prefix(steam_img)
         
         open_btn = Gtk.Button(label=_("Open"), valign=Gtk.Align.CENTER)
-        open_btn.connect("clicked", lambda b: SteamGamesDialog(self.main_window).present())
+        open_btn.connect("clicked", self._on_open_steam_config)
         
         steam_row.add_suffix(open_btn)
         row.add_row(steam_row)
@@ -845,3 +845,21 @@ class PerformanceGamesPage(BaseSettingsPage):
         games_group.add(row)
 
         self.sync_all_switches()
+
+    def _on_open_steam_config(self, button):
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "perf_games", "configureSteam.sh")
+        try:
+            res = subprocess.run([script_path, "is_installed"], capture_output=True, text=True)
+            if res.stdout.strip() == "true":
+                SteamGamesDialog(self.main_window).present()
+                return
+        except Exception as e:
+            print(f"Error checking steam: {e}")
+            
+        dlg = Adw.MessageDialog.new(
+            self.main_window,
+            _("Steam Not Available"),
+            _("Steam installation was not found. Please install Steam to use this feature.")
+        )
+        dlg.add_response("ok", _("OK"))
+        dlg.present()

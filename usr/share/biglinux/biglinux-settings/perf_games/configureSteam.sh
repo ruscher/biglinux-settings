@@ -134,10 +134,21 @@ apply_changes() {
 close_steam() { pkill -9 steam; pkill -9 steamwebhelper; echo "done"; }
 check_steam() { pgrep -x steam >/dev/null && echo "running" || echo "stopped"; }
 
+is_installed() {
+    for p in "$HOME/.steam/steam" "$HOME/.local/share/Steam" "$HOME/.steam/debian-installation"; do
+        if [ -f "$p/config/config.vdf" ]; then
+            echo "true"
+            exit 0
+        fi
+    done
+    echo "false"
+}
+
 case "$action" in
     list) list_games ;;
     apply) apply_changes ;;
     close_steam) close_steam ;;
     check_steam) check_steam ;;
-    *) echo "Usage: $0 {list|apply|close_steam|check_steam}"; exit 1 ;;
+    is_installed) is_installed ;;
+    *) echo "Usage: $0 {list|apply|close_steam|check_steam|is_installed}"; exit 1 ;;
 esac
