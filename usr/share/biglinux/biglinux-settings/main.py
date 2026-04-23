@@ -274,22 +274,33 @@ class BiglinuxSettingsWindow(Adw.ApplicationWindow):
             },
         ]
 
+        # Create sidebar buttons up front (cheap), but defer building the pages
+        # themselves until they are first viewed. This avoids paying for all ~58
+        # subprocess state checks before the window is even presented.
         for page in self.pages_config:
-            # Sidebar button
             btn = self.create_sidebar_button(page["label"], page["icon"], page["id"])
             self.sidebar_box.append(btn)
             self.sidebar_buttons.append(btn)
+            page["instance"] = None
 
-            # Page instance
-            page_instance = page["class"](self)
-            page["instance"] = page_instance
-            self.pages_box.append(page_instance)
-
-        # Select and show first page
+        # Select and show first page (this lazily builds it).
         if self.sidebar_buttons:
             self.sidebar_buttons[0].add_css_class("selected")
             self.current_page_id = self.pages_config[0]["id"]
             self._show_single_page(self.current_page_id)
+
+    def _ensure_page_instance(self, page_id):
+        """Build the page on first access and append it to the content box."""
+        for page in self.pages_config:
+            if page["id"] != page_id:
+                continue
+            if page["instance"] is None:
+                instance = page["class"](self)
+                page["instance"] = instance
+                instance.set_visible(False)
+                self.pages_box.append(instance)
+            return page["instance"]
+        return None
 
     def _show_single_page(self, page_id):
         """Show only one page (normal mode)."""
@@ -300,8 +311,13 @@ class BiglinuxSettingsWindow(Adw.ApplicationWindow):
         self.search_results_scroll.set_visible(False)
         self.content_scroll.set_visible(True)
 
+        # Build the target page on demand.
+        self._ensure_page_instance(page_id)
+
         for page in self.pages_config:
             instance = page["instance"]
+            if instance is None:
+                continue
             is_current = page["id"] == page_id
             instance.set_visible(is_current)
             if hasattr(instance, "set_search_mode"):
@@ -317,6 +333,12 @@ class BiglinuxSettingsWindow(Adw.ApplicationWindow):
         # Hide pages, show search results
         self.content_scroll.set_visible(False)
         self.search_results_scroll.set_visible(True)
+
+        # Searching is cross-page, so any page not yet built must be built now
+        # to contribute its rows.
+        for page in self.pages_config:
+            if page["instance"] is None:
+                self._ensure_page_instance(page["id"])
 
         # Collect matching rows from all pages
         for page in self.pages_config:

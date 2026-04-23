@@ -112,4 +112,4 @@ class PerformancePage(BaseSettingsPage):
         # #     gameMode
         # # )
 
-        self.sync_all_switches()
+        self.sync_all_switches_deferred()

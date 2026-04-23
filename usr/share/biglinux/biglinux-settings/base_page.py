@@ -7,8 +7,9 @@ import locale
 import os
 import subprocess
 import socket
+from concurrent.futures import ThreadPoolExecutor
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk
 from typing import Optional
 
 # Set up gettext for application localization.
@@ -38,6 +39,10 @@ class BaseSettingsPage(Adw.Bin):
         self.sub_switches = {}
         # Mapping from script path to timeout value (seconds). If None, default 90.
         self.switch_timeouts: dict[str, Optional[int]] = {}
+
+        # Disabled until the first sync completes so the user can't toggle a
+        # switch while its displayed state is still the widget default.
+        self.set_sensitive(False)
 
 
 
@@ -337,12 +342,40 @@ class BaseSettingsPage(Adw.Bin):
             is_supported = not getattr(row, "_hidden_no_support", False)
             switch._info_icon.set_visible(state and is_supported)
 
+    def sync_all_switches_deferred(self):
+        """Schedule sync_all_switches on the GLib main loop so the UI can paint first.
+
+        Used during initial page construction to keep the window responsive while the
+        ~N subprocess state checks run. Safe to call multiple times; each invocation
+        is one-shot.
+        """
+        GLib.idle_add(self._run_deferred_sync)
+
+    def _run_deferred_sync(self):
+        self.sync_all_switches()
+        return False  # one-shot idle callback
+
     def sync_all_switches(self):
         """Synchronizes all UI widgets and disables them if their script is invalid, providing a tooltip with the reason."""
+        # Run every unique script check in parallel threads. Each call is a
+        # subprocess, so thread contention is I/O-bound (no GIL issue) and the
+        # total wall time drops from O(N) to roughly O(max script duration).
+        unique_paths = list(
+            {*self.switch_scripts.values(), *self.status_indicators.values()}
+        )
+        if unique_paths:
+            max_workers = min(16, len(unique_paths))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                state_cache = dict(
+                    zip(unique_paths, executor.map(self.check_script_state, unique_paths))
+                )
+        else:
+            state_cache = {}
+
         # Sync all switches
         for switch, script_path in self.switch_scripts.items():
             row = switch.get_parent().get_parent()
-            status, message = self.check_script_state(script_path)
+            status, message = state_cache.get(script_path, (None, ""))
 
             switch.handler_block_by_func(self.on_switch_changed)
 
@@ -377,7 +410,7 @@ class BaseSettingsPage(Adw.Bin):
         # Sync all status indicators
         for indicator, script_path in self.status_indicators.items():
             row = indicator.get_parent().get_parent()
-            status, message = self.check_script_state(script_path)
+            status, message = state_cache.get(script_path, (None, ""))
 
             # Always remove all state classes first to ensure a clean slate
             indicator.remove_css_class("status-on")
@@ -409,6 +442,9 @@ class BaseSettingsPage(Adw.Bin):
             for child_row in child_rows:
                 is_supported = not getattr(child_row, "_hidden_no_support", False)
                 child_row.set_visible(parent_state and is_supported)
+
+        # Initial construction disables the page; re-enable once state is known.
+        self.set_sensitive(True)
 
     def on_switch_changed(self, switch, state):
         """Callback executed when a user manually toggles a switch."""
