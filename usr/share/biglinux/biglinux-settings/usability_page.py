@@ -60,4 +60,4 @@ class UsabilityPage(BaseSettingsPage):
             "bashPower-symbolic"
         )
 
-        self.sync_all_switches()
+        self.sync_all_switches_deferred()

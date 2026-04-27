@@ -192,7 +192,7 @@ class DockerPage(BaseSettingsPage):
         )
 
         # Syncs
-        self.sync_all_switches()
+        self.sync_all_switches_deferred()
 
     def install_container(self, container_name):
         """Install a Docker container."""
